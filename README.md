@@ -1,9 +1,5 @@
 # Browser Use Web UI (dengan DSPy)
 
-\<img src="./assets/web-ui.png" alt="Browser Use Web UI" width="full"/\>
-
-\<br/\>
-
 [](https://github.com/browser-use/web-ui/stargazers)
 [](https://link.browser-use.com/discord)
 [](https://docs.browser-use.com)
