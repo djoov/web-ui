@@ -9,8 +9,6 @@ Repositori ini adalah antarmuka pengguna web (WebUI) untuk mengontrol agen AI pe
 
 Integrasi ini mengubah agen dari sekadar *prompt-driven* menjadi *program-driven*, yang memisahkan logika aplikasi dari parameter LLM. Hasilnya adalah agen yang lebih andal, modular, dan dapat dioptimalkan secara otomatis.
 
-\<video src="[https://github.com/user-attachments/assets/56bc7080-f2e3-4367-af22-6bf2245ff6cb](https://github.com/user-attachments/assets/56bc7080-f2e3-4367-af22-6bf2245ff6cb)" controls="controls"\>Browser Anda tidak mendukung pemutaran video ini\!\</video\>
-
 ## ✨ Arsitektur Baru dengan DSPy
 
 Perubahan inti dari proyek ini adalah penggantian logika *prompt engineering* manual dengan program DSPy yang terstruktur.
@@ -37,7 +35,7 @@ Baca [panduan memulai cepat](https://docs.browser-use.com/quickstart#prepare-the
 #### Langkah 1: Kloning Repositori
 
 ```bash
-git clone https://github.com/browser-use/web-ui.git
+git clone https://github.com/djoov/web-ui.git
 cd web-ui
 ```
 
