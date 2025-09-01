@@ -1,3 +1,4 @@
+import dspy
 from openai import OpenAI
 import pdb
 from langchain_openai import ChatOpenAI
@@ -43,8 +44,7 @@ from typing import (
 from langchain_anthropic import ChatAnthropic
 from langchain_mistralai import ChatMistralAI
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_ollama import ChatOllama
-from langchain_openai import AzureChatOpenAI, ChatOpenAI
+from langchain_openai import AzureChatOpenAI
 from langchain_ibm import ChatWatsonx
 from langchain_aws import ChatBedrock
 from pydantic import SecretStr
@@ -149,6 +149,45 @@ class DeepSeekR1ChatOllama(ChatOllama):
         return AIMessage(content=content, reasoning_content=reasoning_content)
 
 
+def configure_dspy_lm(provider: str, llm_instance: BaseLanguageModel, **kwargs):
+    """Mengonfigurasi LLM yang akan digunakan oleh DSPy menggunakan dspy.LM generik."""
+    lm = None
+    
+    # Kondisi untuk provider yang kompatibel dengan API OpenAI
+    if provider in ["openai", "azure_openai", "mistral", "alibaba", "moonshot", "unbound", "siliconflow", "modelscope", "grok", "deepseek"]:
+        lm = dspy.LM(
+            model=kwargs.get("model_name"),
+            api_key=kwargs.get("api_key"),
+            api_base=kwargs.get("base_url"),
+            max_tokens=4000
+        )
+    # Kondisi untuk provider spesifik yang mungkin memerlukan kelasnya sendiri
+    elif provider == "anthropic":
+        lm = dspy.Anthropic(
+            model=kwargs.get("model_name"),
+            api_key=kwargs.get("api_key"),
+            api_base=kwargs.get("base_url")
+        )
+    elif provider == "google":
+        lm = dspy.Google(
+            model=kwargs.get("model_name"),
+            api_key=kwargs.get("api_key")
+        )
+    elif provider == "ollama":
+        # Perbaikan kunci sesuai dokumentasi resmi
+        lm = dspy.LM(
+            model=f"ollama_chat/{kwargs.get('model_name')}",
+            api_base=kwargs.get("base_url", "http://localhost:11434"),
+            api_key="" # Ollama lokal tidak memerlukan kunci API
+        )
+    
+    if lm:
+        dspy.configure(lm=lm)
+        print(f"✅ DSPy configured to use {provider} with model {kwargs.get('model_name')}")
+    else:
+        print(f"⚠️ DSPy configuration skipped for unsupported provider: {provider}")
+
+
 def get_llm_model(provider: str, **kwargs):
     """
     Get LLM model
@@ -165,99 +204,70 @@ def get_llm_model(provider: str, **kwargs):
             raise ValueError(error_msg)
         kwargs["api_key"] = api_key
 
-    if provider == "anthropic":
-        if not kwargs.get("base_url", ""):
-            base_url = "https://api.anthropic.com"
-        else:
-            base_url = kwargs.get("base_url")
+    llm = None  # Inisialisasi llm
 
-        return ChatAnthropic(
+    if provider == "anthropic":
+        base_url = kwargs.get("base_url") or "https://api.anthropic.com"
+        llm = ChatAnthropic(
             model=kwargs.get("model_name", "claude-3-5-sonnet-20241022"),
             temperature=kwargs.get("temperature", 0.0),
             base_url=base_url,
-            api_key=api_key,
+            api_key=kwargs.get("api_key"),
         )
     elif provider == 'mistral':
-        if not kwargs.get("base_url", ""):
-            base_url = os.getenv("MISTRAL_ENDPOINT", "https://api.mistral.ai/v1")
-        else:
-            base_url = kwargs.get("base_url")
-        if not kwargs.get("api_key", ""):
-            api_key = os.getenv("MISTRAL_API_KEY", "")
-        else:
-            api_key = kwargs.get("api_key")
-
-        return ChatMistralAI(
+        base_url = kwargs.get("base_url") or os.getenv("MISTRAL_ENDPOINT", "https://api.mistral.ai/v1")
+        api_key = kwargs.get("api_key") or os.getenv("MISTRAL_API_KEY", "")
+        llm = ChatMistralAI(
             model=kwargs.get("model_name", "mistral-large-latest"),
             temperature=kwargs.get("temperature", 0.0),
             base_url=base_url,
             api_key=api_key,
         )
-    elif provider == "openai":
-        if not kwargs.get("base_url", ""):
-            base_url = os.getenv("OPENAI_ENDPOINT", "https://api.openai.com/v1")
-        else:
-            base_url = kwargs.get("base_url")
-
-        return ChatOpenAI(
-            model=kwargs.get("model_name", "gpt-4o"),
-            temperature=kwargs.get("temperature", 0.0),
-            base_url=base_url,
-            api_key=api_key,
-        )
-    elif provider == "grok":
-        if not kwargs.get("base_url", ""):
-            base_url = os.getenv("GROK_ENDPOINT", "https://api.x.ai/v1")
-        else:
-            base_url = kwargs.get("base_url")
-
-        return ChatOpenAI(
-            model=kwargs.get("model_name", "grok-3"),
-            temperature=kwargs.get("temperature", 0.0),
-            base_url=base_url,
-            api_key=api_key,
-        )
-    elif provider == "deepseek":
-        if not kwargs.get("base_url", ""):
-            base_url = os.getenv("DEEPSEEK_ENDPOINT", "")
-        else:
-            base_url = kwargs.get("base_url")
-
-        if kwargs.get("model_name", "deepseek-chat") == "deepseek-reasoner":
-            return DeepSeekR1ChatOpenAI(
-                model=kwargs.get("model_name", "deepseek-reasoner"),
+    # ... (blok provider lainnya mengikuti pola yang sama)
+    elif provider in ["openai", "grok", "deepseek", "alibaba", "moonshot", "unbound", "siliconflow", "modelscope"]:
+        default_endpoints = {
+            "openai": "https://api.openai.com/v1",
+            "grok": "https://api.x.ai/v1",
+            "deepseek": "https://api.deepseek.com",
+            "alibaba": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "moonshot": "https://api.moonshot.cn/v1",
+            "unbound": "https://api.getunbound.ai",
+            "siliconflow": "https://api.siliconflow.cn/v1/",
+            "modelscope": "https://api-inference.modelscope.cn/v1"
+        }
+        base_url = kwargs.get("base_url") or os.getenv(f"{provider.upper()}_ENDPOINT", default_endpoints.get(provider))
+        
+        if provider == "deepseek" and kwargs.get("model_name") == "deepseek-reasoner":
+             llm = DeepSeekR1ChatOpenAI(
+                model=kwargs.get("model_name"),
                 temperature=kwargs.get("temperature", 0.0),
                 base_url=base_url,
-                api_key=api_key,
+                api_key=kwargs.get("api_key"),
             )
         else:
-            return ChatOpenAI(
-                model=kwargs.get("model_name", "deepseek-chat"),
+             llm = ChatOpenAI(
+                model=kwargs.get("model_name"),
                 temperature=kwargs.get("temperature", 0.0),
                 base_url=base_url,
-                api_key=api_key,
+                api_key=kwargs.get("api_key"),
             )
     elif provider == "google":
-        return ChatGoogleGenerativeAI(
+        llm = ChatGoogleGenerativeAI(
             model=kwargs.get("model_name", "gemini-2.0-flash-exp"),
             temperature=kwargs.get("temperature", 0.0),
-            api_key=api_key,
+            api_key=kwargs.get("api_key"),
         )
     elif provider == "ollama":
-        if not kwargs.get("base_url", ""):
-            base_url = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
-        else:
-            base_url = kwargs.get("base_url")
-
+        base_url = kwargs.get("base_url") or os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
         if "deepseek-r1" in kwargs.get("model_name", "qwen2.5:7b"):
-            return DeepSeekR1ChatOllama(
+            llm = DeepSeekR1ChatOllama(
                 model=kwargs.get("model_name", "deepseek-r1:14b"),
                 temperature=kwargs.get("temperature", 0.0),
                 num_ctx=kwargs.get("num_ctx", 32000),
                 base_url=base_url,
             )
         else:
-            return ChatOllama(
+            llm = ChatOllama(
                 model=kwargs.get("model_name", "qwen2.5:7b"),
                 temperature=kwargs.get("temperature", 0.0),
                 num_ctx=kwargs.get("num_ctx", 32000),
@@ -265,91 +275,34 @@ def get_llm_model(provider: str, **kwargs):
                 base_url=base_url,
             )
     elif provider == "azure_openai":
-        if not kwargs.get("base_url", ""):
-            base_url = os.getenv("AZURE_OPENAI_ENDPOINT", "")
-        else:
-            base_url = kwargs.get("base_url")
-        api_version = kwargs.get("api_version", "") or os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
-        return AzureChatOpenAI(
+        base_url = kwargs.get("base_url") or os.getenv("AZURE_OPENAI_ENDPOINT", "")
+        api_version = kwargs.get("api_version") or os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview")
+        llm = AzureChatOpenAI(
             model=kwargs.get("model_name", "gpt-4o"),
             temperature=kwargs.get("temperature", 0.0),
             api_version=api_version,
             azure_endpoint=base_url,
-            api_key=api_key,
-        )
-    elif provider == "alibaba":
-        if not kwargs.get("base_url", ""):
-            base_url = os.getenv("ALIBABA_ENDPOINT", "https://dashscope.aliyuncs.com/compatible-mode/v1")
-        else:
-            base_url = kwargs.get("base_url")
-
-        return ChatOpenAI(
-            model=kwargs.get("model_name", "qwen-plus"),
-            temperature=kwargs.get("temperature", 0.0),
-            base_url=base_url,
-            api_key=api_key,
+            api_key=kwargs.get("api_key"),
         )
     elif provider == "ibm":
         parameters = {
             "temperature": kwargs.get("temperature", 0.0),
             "max_tokens": kwargs.get("num_ctx", 32000)
         }
-        if not kwargs.get("base_url", ""):
-            base_url = os.getenv("IBM_ENDPOINT", "https://us-south.ml.cloud.ibm.com")
-        else:
-            base_url = kwargs.get("base_url")
-
-        return ChatWatsonx(
+        base_url = kwargs.get("base_url") or os.getenv("IBM_ENDPOINT", "https://us-south.ml.cloud.ibm.com")
+        llm = ChatWatsonx(
             model_id=kwargs.get("model_name", "ibm/granite-vision-3.1-2b-preview"),
             url=base_url,
             project_id=os.getenv("IBM_PROJECT_ID"),
             apikey=os.getenv("IBM_API_KEY"),
             params=parameters
         )
-    elif provider == "moonshot":
-        return ChatOpenAI(
-            model=kwargs.get("model_name", "moonshot-v1-32k-vision-preview"),
-            temperature=kwargs.get("temperature", 0.0),
-            base_url=os.getenv("MOONSHOT_ENDPOINT"),
-            api_key=os.getenv("MOONSHOT_API_KEY"),
-        )
-    elif provider == "unbound":
-        return ChatOpenAI(
-            model=kwargs.get("model_name", "gpt-4o-mini"),
-            temperature=kwargs.get("temperature", 0.0),
-            base_url=os.getenv("UNBOUND_ENDPOINT", "https://api.getunbound.ai"),
-            api_key=api_key,
-        )
-    elif provider == "siliconflow":
-        if not kwargs.get("api_key", ""):
-            api_key = os.getenv("SiliconFLOW_API_KEY", "")
-        else:
-            api_key = kwargs.get("api_key")
-        if not kwargs.get("base_url", ""):
-            base_url = os.getenv("SiliconFLOW_ENDPOINT", "")
-        else:
-            base_url = kwargs.get("base_url")
-        return ChatOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            model_name=kwargs.get("model_name", "Qwen/QwQ-32B"),
-            temperature=kwargs.get("temperature", 0.0),
-        )
-    elif provider == "modelscope":
-        if not kwargs.get("api_key", ""):
-            api_key = os.getenv("MODELSCOPE_API_KEY", "")
-        else:
-            api_key = kwargs.get("api_key")
-        if not kwargs.get("base_url", ""):
-            base_url = os.getenv("MODELSCOPE_ENDPOINT", "")
-        else:
-            base_url = kwargs.get("base_url")
-        return ChatOpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            model_name=kwargs.get("model_name", "Qwen/QwQ-32B"),
-            temperature=kwargs.get("temperature", 0.0),
-            extra_body = {"enable_thinking": False}
-        )
     else:
         raise ValueError(f"Unsupported provider: {provider}")
+
+    # Konfigurasi DSPy dipanggil di akhir setelah llm diinisialisasi
+    if llm:
+        configure_dspy_lm(provider, llm, **kwargs)
+        return llm
+    else:
+        raise ValueError(f"Failed to initialize LLM for provider: {provider}")
